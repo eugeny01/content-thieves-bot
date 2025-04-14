@@ -26,16 +26,26 @@ async def download_video(url: str, chat_id: int) -> str:
         ]
         subprocess.run(command, check=True)
         downloaded_file = output_path.replace('%(ext)s', 'mp4')
-        return downloaded_file
+        
+        # Получаем название видео
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_title = info.get('title', 'video')
+        
+        return downloaded_file, video_title
     except subprocess.CalledProcessError as e:
         logging.error(f"Ошибка при скачивании видео: {e}")
-        return None
+        return None, None
 
 # Функция для извлечения аудио из видео
-async def extract_audio(video_file: str, chat_id: int) -> str:
+async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
     try:
         safe_chat_id = str(chat_id).lstrip('-')
-        audio_file = f"{safe_chat_id}_audio.mp3"
+        audio_file = f"{video_title}_{safe_chat_id}_audio.mp3"
         command = [
             'ffmpeg',
             '-i', video_file,
@@ -64,6 +74,7 @@ async def download_tiktok_video(url: str, chat_id: int, context: ContextTypes.DE
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             video_file = ydl.prepare_filename(info)
+            video_title = info.get('title', 'video')
             if os.path.exists(video_file):
                 # Отправляем видео
                 with open(video_file, 'rb') as video:
@@ -71,7 +82,7 @@ async def download_tiktok_video(url: str, chat_id: int, context: ContextTypes.DE
                 logging.info(f"Видео TikTok успешно отправлено в чат: {video_file}")
 
                 # Извлекаем и отправляем аудио
-                audio_file = await extract_audio(video_file, chat_id)
+                audio_file = await extract_audio(video_file, video_title, chat_id)
                 if audio_file and os.path.exists(audio_file):
                     with open(audio_file, 'rb') as audio:
                         await context.bot.send_audio(chat_id=chat_id, audio=audio)
@@ -101,7 +112,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=chat_id, text="Йоу, качаю видео, скоро отдам. А следом и аудио из него сворую для тебя. Только не шуми")
         logging.info(f"Начало загрузки видео по ссылке: {url}")
 
-        video_file = await download_video(url, chat_id)
+        video_file, video_title = await download_video(url, chat_id)
         if video_file and os.path.exists(video_file):
             try:
                 # Отправляем видео
@@ -110,7 +121,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logging.info(f"Видео успешно отправлено в чат: {video_file}")
 
                 # Извлекаем и отправляем аудио
-                audio_file = await extract_audio(video_file, chat_id)
+                audio_file = await extract_audio(video_file, video_title, chat_id)
                 if audio_file and os.path.exists(audio_file):
                     with open(audio_file, 'rb') as audio:
                         await context.bot.send_audio(chat_id=chat_id, audio=audio)
@@ -134,8 +145,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info("Сообщение не содержит ссылку на поддерживаемый ресурс.")
 
 # Основная функция запуска бота
+
+import shutil
+
+def check_tools():
+    missing = []
+    if not shutil.which("ffmpeg"):
+        missing.append("ffmpeg")
+    if not shutil.which("yt-dlp"):
+        missing.append("yt-dlp")
+    if missing:
+        print(f"Ошибка: не найдены утилиты: {', '.join(missing)}")
+        exit(1)
+
+
 def main():
-    application = ApplicationBuilder().token('7690359419:AAFO0dgpL0IaAP44WCMtNOTPMq5plBmPWlA').build()
+    check_tools()
+    application = ApplicationBuilder().token(os.getenv('BOT_TOKEN')).build()  #7690359419:AAFO0dgpL0IaAP44WCMtNOTPMq5plBmPWlA
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     application.run_polling()
 
