@@ -41,13 +41,69 @@ async def download_video(url: str, chat_id: int) -> str:
         logging.error(f"Ошибка при скачивании видео: {e}")
         return None, None
 
+# Функция для извлечения аудио из видео (через ffmpeg-python)
+import ffmpeg
+
+async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
+    try:
+        safe_chat_id = str(chat_id).lstrip('-')
+        audio_file = f"{video_title}_{safe_chat_id}_audio.mp3"
+        ffmpeg.input(video_file).output(
+            audio_file,
+            vn=None,
+            acodec='libmp3lame',
+            ar='44100',
+            ac='2'
+        ).run(overwrite_output=True)
+        return audio_file
+    except ffmpeg.Error as e:
+        logging.error(f"Ошибка при извлечении аудио через ffmpeg-python: {e}")
+        return None
+
+# --- TikTok support ---
+
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    filename='bot.log'
+)
+
+# Функция для скачивания видео
+async def download_video(url: str, chat_id: int) -> str:
+    try:
+        safe_chat_id = str(chat_id).lstrip('-')
+        output_path = f"{safe_chat_id}_video.%(ext)s"
+        command = [
+            'yt-dlp',
+            '-f', 'mp4',
+            '-o', output_path,
+            url
+        ]
+        subprocess.run(command, check=True)
+        downloaded_file = output_path.replace('%(ext)s', 'mp4')
+        
+        # Получаем название видео
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_title = info.get('title', 'video')
+        
+        return downloaded_file, video_title
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Ошибка при скачивании видео: {e}")
+        return None, None
+
 # Функция для извлечения аудио из видео
 async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
     try:
         safe_chat_id = str(chat_id).lstrip('-')
         audio_file = f"{video_title}_{safe_chat_id}_audio.mp3"
         command = [
-            './ffmpeg',
+            'ffmpeg',
             '-i', video_file,
             '-vn',
             '-acodec', 'libmp3lame',
@@ -145,23 +201,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.info("Сообщение не содержит ссылку на поддерживаемый ресурс.")
 
 # Основная функция запуска бота
-
-import shutil
-
-def check_tools():
-    missing = []
-    if not shutil.which("ffmpeg"):
-        missing.append("ffmpeg")
-    if not shutil.which("yt-dlp"):
-        missing.append("yt-dlp")
-    if missing:
-        print(f"Ошибка: не найдены утилиты: {', '.join(missing)}")
-        exit(1)
-
-
 def main():
-    check_tools()
-    application = ApplicationBuilder().token(os.getenv('BOT_TOKEN')).build()  #7690359419:AAFO0dgpL0IaAP44WCMtNOTPMq5plBmPWlA
+    application = ApplicationBuilder().token('7690359419:AAFO0dgpL0IaAP44WCMtNOTPMq5plBmPWlA').build()
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     application.run_polling()
 
