@@ -47,7 +47,7 @@ async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
         safe_chat_id = str(chat_id).lstrip('-')
         audio_file = f"{video_title}_{safe_chat_id}_audio.mp3"
         command = [
-            'ffmpeg',
+            './ffmpeg',
             '-i', video_file,
             '-vn',
             '-acodec', 'libmp3lame',
