@@ -1,1 +1,1 @@
-worker: python ContentThieves.py
+worker: python3 ContentThieves.py
