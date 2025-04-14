@@ -1,0 +1,3 @@
+python-telegram-bot==20.7
+yt-dlp==2025.3.31
+ffmpeg-python==0.2.0
