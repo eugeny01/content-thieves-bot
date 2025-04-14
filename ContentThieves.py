@@ -6,118 +6,6 @@ import ffmpeg
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 import yt_dlp  # --- TikTok support ---
-
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    filename='bot.log'
-)
-
-# Функция для скачивания видео
-async def download_video(url: str, chat_id: int) -> str:
-    try:
-        safe_chat_id = str(chat_id).lstrip('-')
-        output_path = f"{safe_chat_id}_video.%(ext)s"
-        command = [
-            'yt-dlp',
-            '-f', 'mp4',
-            '-o', output_path,
-            url
-        ]
-        subprocess.run(command, check=True)
-        downloaded_file = output_path.replace('%(ext)s', 'mp4')
-        
-        # Получаем название видео
-        ydl_opts = {
-            'quiet': True,
-            'extract_flat': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_title = info.get('title', 'video')
-        
-        return downloaded_file, video_title
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Ошибка при скачивании видео: {e}")
-        return None, None
-
-# Функция для извлечения аудио из видео (через ffmpeg-python)
-async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
-    try:
-        safe_chat_id = str(chat_id).lstrip('-')
-        audio_file = f"{video_title}_{safe_chat_id}_audio.mp3"
-        ffmpeg.input(video_file).output(
-            audio_file,
-            vn=None,
-            acodec='libmp3lame',
-            ar='44100',
-            ac='2'
-        ).run(overwrite_output=True)
-        return audio_file
-    except ffmpeg.Error as e:
-        logging.error(f"Ошибка при извлечении аудио через ffmpeg-python: {e}")
-        return None
-
-# --- TikTok support ---
-
-# Настройка логирования
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO,
-    filename='bot.log'
-)
-
-# Функция для скачивания видео
-async def download_video(url: str, chat_id: int) -> str:
-    try:
-        safe_chat_id = str(chat_id).lstrip('-')
-        output_path = f"{safe_chat_id}_video.%(ext)s"
-        command = [
-            'yt-dlp',
-            '-f', 'mp4',
-            '-o', output_path,
-            url
-        ]
-        subprocess.run(command, check=True)
-        downloaded_file = output_path.replace('%(ext)s', 'mp4')
-        
-        # Получаем название видео
-        ydl_opts = {
-            'quiet': True,
-            'extract_flat': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            video_title = info.get('title', 'video')
-        
-        return downloaded_file, video_title
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Ошибка при скачивании видео: {e}")
-        return None, None
-
-# Функция для извлечения аудио из видео
-async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
-    try:
-        safe_chat_id = str(chat_id).lstrip('-')
-        audio_file = f"{video_title}_{safe_chat_id}_audio.mp3"
-        command = [
-            'ffmpeg',
-            '-i', video_file,
-            '-vn',
-            '-acodec', 'libmp3lame',
-            '-ar', '44100',
-            '-ac', '2',
-            audio_file
-        ]
-        with open('ffmpeg_log.txt', 'w') as log_file:
-            subprocess.run(command, check=True, stdout=log_file, stderr=log_file)
-        return audio_file
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Ошибка при извлечении аудио: {e}")
-        return None
-
-# --- TikTok support ---
 async def download_tiktok_video(url: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE):
     try:
         safe_chat_id = str(chat_id).lstrip('-')
@@ -130,28 +18,30 @@ async def download_tiktok_video(url: str, chat_id: int, context: ContextTypes.DE
             info = ydl.extract_info(url, download=True)
             video_file = ydl.prepare_filename(info)
             video_title = info.get('title', 'video')
+
             if os.path.exists(video_file):
                 # Отправляем видео
                 with open(video_file, 'rb') as video:
                     await context.bot.send_video(chat_id=chat_id, video=video)
                 logging.info(f"Видео TikTok успешно отправлено в чат: {video_file}")
 
-                # Извлекаем и отправляем аудио
+                # Обязательная попытка извлечь аудио
                 audio_file = await extract_audio(video_file, video_title, chat_id)
                 if audio_file and os.path.exists(audio_file):
                     with open(audio_file, 'rb') as audio:
                         await context.bot.send_audio(chat_id=chat_id, audio=audio)
-                    logging.info(f"Аудио успешно отправлено в чат: {audio_file}")
+                    logging.info(f"Аудио TikTok успешно отправлено: {audio_file}")
                     os.remove(audio_file)
                 else:
-                    await context.bot.send_message(chat_id=chat_id, text="Не удалось извлечь аудио из видео.")
+                    await context.bot.send_message(chat_id=chat_id, text="⚠️ Видео получено, но не удалось извлечь аудио. Проверь формат.")
                 
                 os.remove(video_file)
             else:
-                await context.bot.send_message(chat_id=chat_id, text="Не удалось найти загруженное видео.")
+                await context.bot.send_message(chat_id=chat_id, text="❌ Видео скачано, но файл не найден.")
     except Exception as e:
         logging.error(f"Ошибка при скачивании видео TikTok: {e}")
-        await context.bot.send_message(chat_id=chat_id, text="Произошла ошибка при скачивании видео TikTok.")
+        await context.bot.send_message(chat_id=chat_id, text="Произошла ошибка при скачивании или обработке видео TikTok.")
+
 # --- End of TikTok support ---
 
 # Обработчик входящих сообщений
