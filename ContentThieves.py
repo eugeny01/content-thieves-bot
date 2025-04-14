@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import subprocess
+import ffmpeg
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 import yt_dlp  # --- TikTok support ---
@@ -42,8 +43,6 @@ async def download_video(url: str, chat_id: int) -> str:
         return None, None
 
 # Функция для извлечения аудио из видео (через ffmpeg-python)
-import ffmpeg
-
 async def extract_audio(video_file: str, video_title: str, chat_id: int) -> str:
     try:
         safe_chat_id = str(chat_id).lstrip('-')
